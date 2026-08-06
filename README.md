@@ -4,7 +4,8 @@
 
 **Implementações realizadas:**
 
-* Criação do agente.
-* Configuração das API Keys.
-* Atualização das instruções para o agente "Astra IA".
-* Implementação do botão **M** para alternar entre **Mute** e **Unmute**.
+- Criação do agente **Astra IA**.
+- Configuração das API Keys necessárias para o funcionamento da aplicação.
+- Atualização das instruções e do comportamento do agente.
+- Implementação do botão **M** para alternar entre os modos **Mute** e **Unmute**.
+- Integração do **Mem0** como banco de memória para armazenar informações relevantes dos usuários, permitindo que o agente mantenha contexto e personalize as interações ao longo do tempo.
