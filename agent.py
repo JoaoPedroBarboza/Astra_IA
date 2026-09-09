@@ -3,7 +3,10 @@ from pynput import keyboard # Biblioteca para escutar o teclado (atalho de mutar
 from dotenv import load_dotenv
 from livekit import agents
 from livekit.agents import AgentSession, Agent, RoomInputOptions, ChatContext
+from livekit.agents.voice import VoiceActivityVideoSampler
+from livekit.agents.utils import images
 from livekit.plugins import noise_cancellation, google
+from google.genai import types as genai_types
 from prompts import AGENT_INSTRUCTION, SESSION_INSTRUCTION
 from mem0 import AsyncMemoryClient
 import logging
@@ -54,6 +57,18 @@ class Assistant(Agent):
             llm=google.beta.realtime.RealtimeModel(
                 voice="Kore",
                 temperature=0.6,
+                media_resolution=genai_types.MediaResolution.MEDIA_RESOLUTION_LOW,
+                image_encode_options=images.EncodeOptions(
+                    format="JPEG",
+                    quality=60,
+                    resize_options=images.ResizeOptions(
+                        width=768, height=768, strategy="scale_aspect_fit"
+                    ),
+                ),
+                context_window_compression=genai_types.ContextWindowCompressionConfig(
+                    trigger_tokens=25600,
+                    sliding_window=genai_types.SlidingWindow(target_tokens=12800),
+                ),
             ),
             chat_ctx=chat_ctx,
         )
@@ -83,6 +98,10 @@ async def entrypoint(ctx: agents.JobContext):
                 })
 
         logging.info(f"Formatted messages to add to memory: {messages_formatted}")
+        if not messages_formatted:
+            logging.info("No new messages to save, skipping memory update.")
+            return
+
         # Assuming user_id is consistent
         await mem0.add(messages_formatted, user_id="JoaoPedro")
         logging.info("Chat context saved to memory.")
@@ -133,7 +152,9 @@ async def entrypoint(ctx: agents.JobContext):
 
     await ctx.connect()
 
-    session = AgentSession()
+    session = AgentSession(
+        video_sampler=VoiceActivityVideoSampler(speaking_fps=0.5, silent_fps=0.1),
+    )
 
     agent = Assistant(chat_ctx=initial_ctx)
 

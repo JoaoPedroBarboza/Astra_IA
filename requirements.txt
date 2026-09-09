@@ -7,3 +7,4 @@ livekit-plugins-noise-cancellation
 requests
 python-dotenv
 pynput
+mem0ai
