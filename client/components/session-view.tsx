@@ -71,7 +71,7 @@ export function SessionView() {
       </header>
 
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-5 px-5 pb-5 sm:px-8 lg:flex-row">
-        <section className="flex min-h-[26rem] flex-1 flex-col items-center justify-center gap-7">
+        <section className="flex min-h-104 flex-1 flex-col items-center justify-center gap-7">
           {connected ? (
             <ConnectedStage />
           ) : (
@@ -83,7 +83,7 @@ export function SessionView() {
           )}
         </section>
 
-        <aside className="astra-slide-in flex w-full flex-col gap-4 lg:w-[21rem] lg:min-h-0">
+        <aside className="astra-slide-in flex w-full flex-col gap-4 lg:w-84 lg:min-h-0">
           <TranscriptPanel connected={connected} />
           <VideoPreview />
         </aside>
