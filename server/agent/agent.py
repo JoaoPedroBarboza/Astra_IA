@@ -62,7 +62,9 @@ class Assistant(Agent):
 
 async def entrypoint(ctx: agents.JobContext):
     
-    async def shutdown_hook(chat_ctx: ChatContext, mem0: AsyncMemoryClient, memory_str: str):
+    async def shutdown_hook(
+        chat_ctx: ChatContext, mem0: AsyncMemoryClient, memory_str: str, user_id: str
+    ):
         logging.info("Shutting down, saving chat context to memory...")
 
         messages_formatted = []
@@ -88,8 +90,9 @@ async def entrypoint(ctx: agents.JobContext):
             logging.info("No new messages to save, skipping memory update.")
             return
 
-        # Assuming user_id is consistent
-        await mem0.add(messages_formatted, user_id="JoaoPedro")
+        # Recebe o user_id por parâmetro em vez de repetir o literal: as duas pontas
+        # já ficaram divergentes uma vez (gravando num usuário e lendo de outro).
+        await mem0.add(messages_formatted, user_id=user_id)
         logging.info("Chat context saved to memory.")
 
     # Initialize Memory Client
@@ -154,7 +157,11 @@ async def entrypoint(ctx: agents.JobContext):
     )
 
     # Use a shutdown callback to capture the context at the end
-    ctx.add_shutdown_callback(lambda: shutdown_hook(session._agent.chat_ctx, mem0, memory_str))
+    # session.history acumula a conversa; o agent.chat_ctx guarda apenas o contexto
+    # configurado do agente, então lê-lo aqui salvava uma lista vazia na memória.
+    ctx.add_shutdown_callback(
+        lambda: shutdown_hook(session.history, mem0, memory_str, user_id)
+    )
 
     await session.generate_reply(
         instructions=SESSION_INSTRUCTION  + "\nCumprimente o usuário de forma breve e confiante."
