@@ -1,0 +1,11 @@
+# Credenciais reais (LiveKit, OpenAI, Mem0) — nunca versionar.
+.env
+.env.*
+!.env.example
+
+# Ambiente virtual e artefatos do Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/

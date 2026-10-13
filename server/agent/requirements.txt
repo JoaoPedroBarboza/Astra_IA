@@ -1,6 +1,5 @@
 livekit-agents
 livekit-plugins-openai
-livekit-plugins-google
 livekit-plugins-deepgram
 livekit-plugins-silero
 livekit-plugins-noise-cancellation

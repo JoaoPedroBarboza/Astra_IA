@@ -1,0 +1,161 @@
+@import "tailwindcss";
+
+:root {
+  --astra-bg-start: #060a16;
+  --astra-bg-end: #0d1830;
+  --astra-panel: rgba(15, 23, 42, 0.55);
+  --astra-border: rgba(96, 165, 250, 0.16);
+  --astra-blue: #3b82f6;
+  --astra-blue-light: #60a5fa;
+  --astra-cyan: #22d3ee;
+  --astra-purple: #8b7bf0;
+  --astra-text: #e6ecff;
+  --astra-text-dim: rgba(226, 232, 240, 0.55);
+  --astra-text-dimmer: rgba(226, 232, 240, 0.35);
+  --astra-online: #34d399;
+}
+
+@theme inline {
+  --color-background: var(--astra-bg-start);
+  --color-foreground: var(--astra-text);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(60% 50% at 50% 18%, rgba(59, 130, 246, 0.14), transparent 70%),
+    linear-gradient(180deg, var(--astra-bg-start) 0%, var(--astra-bg-end) 100%);
+  color: var(--astra-text);
+}
+
+/* Glow halo behind the 3-D orb canvas */
+@keyframes astra-glow-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+.astra-glow-pulse {
+  animation: astra-glow-pulse 3.2s ease-in-out infinite;
+}
+
+/* Waveform bars */
+@keyframes astra-wave {
+  0%,
+  100% {
+    transform: scaleY(0.25);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.astra-wave-bar {
+  animation: astra-wave 1.1s ease-in-out infinite;
+  transform-origin: center;
+}
+
+/* Idle badge shimmer */
+@keyframes astra-badge-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 rgba(96, 165, 250, 0);
+  }
+  50% {
+    box-shadow: 0 0 14px rgba(96, 165, 250, 0.55);
+  }
+}
+
+.astra-badge-glow {
+  animation: astra-badge-glow 3s ease-in-out infinite;
+}
+
+/* Painéis de vidro */
+.astra-panel {
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.055) 0%,
+    rgba(255, 255, 255, 0.018) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(18px);
+  border-radius: 1rem;
+}
+
+/* Entradas de conteúdo */
+@keyframes astra-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.astra-fade-up {
+  animation: astra-fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes astra-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.astra-slide-in {
+  animation: astra-slide-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes astra-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.astra-scale-in {
+  animation: astra-scale-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Barra de rolagem discreta nos painéis */
+.astra-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+
+.astra-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.astra-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .astra-glow-pulse,
+  .astra-wave-bar,
+  .astra-badge-glow,
+  .astra-fade-up,
+  .astra-slide-in,
+  .astra-scale-in {
+    animation: none;
+  }
+}
