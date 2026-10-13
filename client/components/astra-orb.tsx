@@ -37,7 +37,7 @@ export function AstraOrb({ state }: { state: AstraOrbState }) {
     <div className="flex items-center justify-center gap-1 sm:gap-2">
       <Waveform bars={bars} intensity={waveIntensity} />
 
-      <div className="relative h-72 w-72 sm:h-80 sm:w-80 lg:h-[22rem] lg:w-[22rem]">
+      <div className="relative h-72 w-72 sm:h-80 sm:w-80 lg:h-88 lg:w-88">
         <div
           className="astra-glow-pulse pointer-events-none absolute inset-0 rounded-full blur-3xl transition-opacity duration-700 ease-out"
           style={{
