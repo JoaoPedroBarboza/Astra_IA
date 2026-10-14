@@ -5,6 +5,9 @@ from livekit import agents
 from livekit.agents import AgentSession, Agent, RoomInputOptions, ChatContext
 from livekit.agents.voice import VoiceActivityVideoSampler
 from livekit.plugins import noise_cancellation, openai
+# AudioTranscription vem do SDK da OpenAI; o plugin da LiveKit só reexporta
+# RealtimeModel e RealtimeSession.
+from openai.types.realtime import AudioTranscription
 from prompts import AGENT_INSTRUCTION, SESSION_INSTRUCTION
 from mem0 import AsyncMemoryClient
 import logging
@@ -55,6 +58,15 @@ class Assistant(Agent):
             llm=openai.realtime.RealtimeModel(
                 model="gpt-realtime-mini",
                 voice="marin",
+                # O padrão do plugin não define idioma, então a transcrição detecta o
+                # idioma a cada fala e erra em áudio curto ou ruidoso — era daí que
+                # saíam transcrições em chinês/árabe. Fixar evita essa deriva.
+                # O campo espera ISO-639-1 ("pt"); a API rejeita códigos regionais,
+                # que só são suportados para chinês — "pt-BR" não serve.
+                input_audio_transcription=AudioTranscription(
+                    model="gpt-4o-mini-transcribe",
+                    language="pt",
+                ),
             ),
             chat_ctx=chat_ctx,
         )

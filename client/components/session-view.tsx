@@ -42,6 +42,14 @@ export function SessionView() {
       ? "connecting"
       : "offline";
 
+  // A casca trava na viewport a partir de lg, que é o que permite a transcrição rolar
+  // por dentro; no mobile o layout é empilhado e a página rola normalmente.
+  //
+  // Dois detalhes não óbvios aqui:
+  // - sem flex-1: como item flex do body, o flex-basis de flex-1 sobrepõe a altura;
+  // - h-dvh com "!": o LiveKitRoom também aplica .lk-room-container, que define
+  //   height:100%. Esse CSS vem sem camada e, na cascata, estilo sem camada vence
+  //   o @layer utilities do Tailwind — sem o important ele ganharia.
   return (
     <LiveKitRoom
       serverUrl={details?.serverUrl}
@@ -50,7 +58,7 @@ export function SessionView() {
       audio={connected}
       video={false}
       onDisconnected={reset}
-      className="flex min-h-screen flex-1 flex-col"
+      className="flex min-h-screen flex-col lg:h-dvh! lg:min-h-0"
     >
       <RoomAudioRenderer volume={volume} />
 
@@ -70,8 +78,8 @@ export function SessionView() {
         </button>
       </header>
 
-      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-5 px-5 pb-5 sm:px-8 lg:flex-row">
-        <section className="flex min-h-104 flex-1 flex-col items-center justify-center gap-7">
+      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-5 px-5 pb-5 sm:px-8 lg:min-h-0 lg:flex-row">
+        <section className="flex min-h-104 flex-1 flex-col items-center justify-center gap-7 lg:min-h-0">
           {connected ? (
             <ConnectedStage />
           ) : (

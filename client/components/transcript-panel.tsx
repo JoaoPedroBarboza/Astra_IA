@@ -35,7 +35,7 @@ export function TranscriptPanel({ connected }: { connected: boolean }) {
   }, [entries.length]);
 
   return (
-    <section className="astra-panel flex min-h-0 flex-1 flex-col overflow-hidden">
+    <section className="astra-panel flex max-h-96 min-h-0 flex-1 flex-col overflow-hidden lg:max-h-none">
       <header className="flex items-center gap-2 border-b border-white/6 px-4 py-3">
         <h2 className="text-[11px] font-medium tracking-widest text-(--astra-text-dimmer)">
           TRANSCRIÇÃO
