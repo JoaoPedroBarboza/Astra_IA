@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import "@livekit/components-styles";
 import { LiveKitRoom, RoomAudioRenderer, useVoiceAssistant } from "@livekit/components-react";
 import { useConnectionDetails } from "@/hooks/use-connection-details";
+import { authClient } from "@/lib/auth-client";
 import { AstraOrb, type AstraOrbState } from "./astra-orb";
 import { ControlBar } from "./control-bar";
 import { StatusBar, type SessionStatus } from "./status-bar";
@@ -29,10 +31,21 @@ function mapAgentState(state: string): { orbState: AstraOrbState; label: string;
   }
 }
 
-export function SessionView() {
+export function SessionView({ usuario }: { usuario: { nome: string; email: string } }) {
+  const router = useRouter();
   const { state, connect, reset } = useConnectionDetails();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [volume, setVolume] = useState(1);
+  const [saindo, setSaindo] = useState(false);
+
+  // Sair da página desmonta o LiveKitRoom, que desconecta da sala; o agente então
+  // encerra e salva a conversa na memória do usuário.
+  async function sair() {
+    setSaindo(true);
+    await authClient.signOut();
+    router.replace("/login");
+    router.refresh();
+  }
 
   const details = state.status === "ready" ? state.details : undefined;
   const connected = state.status === "ready";
@@ -67,15 +80,33 @@ export function SessionView() {
           <span className="h-2 w-2 rounded-full bg-(--astra-blue-light) shadow-[0_0_10px_var(--astra-blue-light)]" />
           <span className="text-sm font-medium tracking-wide text-foreground">Astra IA</span>
         </div>
-        <button
-          type="button"
-          onClick={() => setSettingsOpen(true)}
-          aria-label="Configurações"
-          title="Configurações"
-          className="flex h-9 w-9 items-center justify-center rounded-full text-(--astra-text-dimmer) transition-colors hover:bg-white/6 hover:text-foreground"
-        >
-          <GearIcon />
-        </button>
+        <div className="flex items-center gap-1">
+          <span
+            className="mr-2 hidden max-w-48 truncate text-xs text-(--astra-text-dim) sm:inline"
+            title={usuario.email}
+          >
+            {usuario.nome}
+          </span>
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Configurações"
+            title="Configurações"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-(--astra-text-dimmer) transition-colors hover:bg-white/6 hover:text-foreground"
+          >
+            <GearIcon />
+          </button>
+          <button
+            type="button"
+            onClick={sair}
+            disabled={saindo}
+            aria-label="Sair"
+            title="Sair"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-(--astra-text-dimmer) transition-colors hover:bg-white/6 hover:text-foreground disabled:opacity-50"
+          >
+            <LogoutIcon />
+          </button>
+        </div>
       </header>
 
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-5 px-5 pb-5 sm:px-8 lg:min-h-0 lg:flex-row">
@@ -164,6 +195,16 @@ function GearIcon() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+    </svg>
+  );
+}
+
+function LogoutIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
     </svg>
   );
 }

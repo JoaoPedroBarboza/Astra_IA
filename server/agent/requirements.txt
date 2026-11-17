@@ -1,9 +1,8 @@
-livekit-agents
-livekit-plugins-openai
-livekit-plugins-deepgram
-livekit-plugins-silero
-livekit-plugins-noise-cancellation
-requests
-python-dotenv
-pynput
-mem0ai
+# Versões fixas: o build do deploy instala do zero, e o SDK da LiveKit muda rápido
+# entre versões. Atualize de propósito, testando localmente antes.
+livekit-agents==1.8.6
+livekit-plugins-openai==1.8.6
+livekit-plugins-noise-cancellation==0.3.2
+openai==2.54.0
+mem0ai==2.2.1
+python-dotenv==1.2.4

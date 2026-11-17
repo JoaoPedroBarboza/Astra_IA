@@ -1,15 +1,11 @@
-"use client";
-
-import { useState } from "react";
-import { LoginScreen } from "@/components/login-screen";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { SessionView } from "@/components/session-view";
+import { auth } from "@/lib/auth";
 
-export default function Home() {
-  const [autenticado, setAutenticado] = useState(false);
+export default async function Home() {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session) redirect("/login");
 
-  if (!autenticado) {
-    return <LoginScreen onEntrar={() => setAutenticado(true)} />;
-  }
-
-  return <SessionView />;
+  return <SessionView usuario={{ nome: session.user.name, email: session.user.email }} />;
 }

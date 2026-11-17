@@ -6,16 +6,24 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "auth:schema": "npx auth@1.7.15 generate --config lib/auth.ts --output lib/db/schema.ts"
   },
   "dependencies": {
+    "@better-auth/drizzle-adapter": "1.7.15",
     "@livekit/components-react": "^2.9.24",
     "@livekit/components-styles": "^1.2.0",
     "@react-three/drei": "^10.7.8",
     "@react-three/fiber": "^9.7.0",
+    "better-auth": "1.7.15",
+    "drizzle-orm": "0.45.4",
     "livekit-client": "^2.22.3",
     "livekit-server-sdk": "^2.19.0",
-    "next": "16.3.4",
+    "next": "16.4.5",
+    "nodemailer": "10.3.1",
+    "pg": "8.23.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "three": "^0.180.0"
@@ -23,11 +31,13 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pg": "8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/three": "^0.185.4",
+    "drizzle-kit": "0.31.11",
     "eslint": "^9",
-    "eslint-config-next": "16.3.4",
+    "eslint-config-next": "16.4.5",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

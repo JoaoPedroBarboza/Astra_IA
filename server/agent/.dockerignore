@@ -1,0 +1,13 @@
+# Credenciais: no LiveKit Cloud elas entram como secrets; em container próprio,
+# por variável de ambiente (--env-file).
+.env
+.env.*
+
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+
+# Logs locais e script de teste da memória — não fazem parte do agente.
+KMS/
+testememoria.py

@@ -1,5 +1,3 @@
-import asyncio # Biblioteca para programação assíncrona
-from pynput import keyboard # Biblioteca para escutar o teclado (atalho de mutar/desmutar)
 from dotenv import load_dotenv
 from livekit import agents
 from livekit.agents import AgentSession, Agent, RoomInputOptions, ChatContext
@@ -18,37 +16,6 @@ load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-def iniciar_toggle_microfone(session: AgentSession, loop: asyncio.AbstractEventLoop):
-    """Permite mutar/desmutar o microfone pressionando a tecla M.
-
-    O listener roda numa thread separada, então usamos call_soon_threadsafe
-    para alterar a entrada de áudio dentro do event loop do agente com segurança.
-    """
-
-    def alternar_mudo():
-        # Inverte o estado atual da entrada de áudio do agente.
-        ativo = session.input.audio_enabled
-        session.input.set_audio_enabled(not ativo)
-        if ativo:
-            print("Microfone MUTADO (M para reativar)")
-        else:
-            print("Microfone ATIVO (M para mutar)")
-
-    def ao_pressionar(key):
-        try:
-            if key.char and key.char.lower() == "m": # Detecta a tecla M
-                loop.call_soon_threadsafe(alternar_mudo)
-        except AttributeError:
-            # Teclas especiais (Shift, Ctrl, etc.) não têm atributo .char
-            pass
-
-    listener = keyboard.Listener(on_press=ao_pressionar)
-    listener.daemon = True # Encerra junto com o programa
-    listener.start()
-    print("Microfone ATIVO — pressione M a qualquer momento para mutar/desmutar.")
-    return listener
-
 
 class Assistant(Agent):
     def __init__(self, chat_ctx: ChatContext = None):
@@ -109,7 +76,14 @@ async def entrypoint(ctx: agents.JobContext):
 
     # Initialize Memory Client
     mem0 = AsyncMemoryClient()
-    user_id = "JoaoPedro"
+
+    # O frontend emite o token com a identidade = id do usuário no banco, então
+    # esse id é a chave da memória no Mem0: cada pessoa lê e grava só as próprias
+    # lembranças. Por isso a conexão vem antes de carregar a memória.
+    await ctx.connect()
+    participante = await ctx.wait_for_participant()
+    user_id = participante.identity
+    nome_usuario = participante.name or "o usuário"
 
     # Load existing memories - try get_all first, fallback to search
     initial_ctx = ChatContext()
@@ -146,12 +120,10 @@ async def entrypoint(ctx: agents.JobContext):
             logging.info(f"Formatted memories: {memory_str}")
             initial_ctx.add_message(
                 role="assistant",
-                content=f"O nome do usuário é {user_id}. Aqui estão informações importantes sobre ele que você deve lembrar e usar nas conversas: {memory_str}."
+                content=f"O nome do usuário é {nome_usuario}. Aqui estão informações importantes sobre ele que você deve lembrar e usar nas conversas: {memory_str}."
             )
     else:
         logging.info("No memories found for this user. Starting fresh conversation.")
-
-    await ctx.connect()
 
     session = AgentSession(
         video_sampler=VoiceActivityVideoSampler(speaking_fps=0.5, silent_fps=0.1),
