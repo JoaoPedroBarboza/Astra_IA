@@ -8,6 +8,20 @@
       "when": 1794879981622,
       "tag": "0000_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794941045979,
+      "tag": "0001_planos",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795001298650,
+      "tag": "0002_conversas",
+      "breakpoints": true
     }
   ]
 }

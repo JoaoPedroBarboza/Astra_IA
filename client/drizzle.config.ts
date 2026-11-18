@@ -7,7 +7,8 @@ loadEnvConfig(process.cwd());
 
 export default defineConfig({
   dialect: "postgresql",
-  schema: "./lib/db/schema.ts",
+  // schema.ts é gerado pelo Better Auth; schema-app.ts tem as tabelas do próprio app.
+  schema: ["./lib/db/schema.ts", "./lib/db/schema-app.ts"],
   out: "./drizzle",
   dbCredentials: { url: process.env.DATABASE_URL! },
 });

@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { LoginScreen } from "@/components/login-screen";
 import { auth, googleHabilitado } from "@/lib/auth";
+
+export const metadata: Metadata = { title: "Entrar" };
 
 // Códigos que o Better Auth anexa em ?error= quando o login com Google falha.
 const ERROS_OAUTH: Record<string, string> = {

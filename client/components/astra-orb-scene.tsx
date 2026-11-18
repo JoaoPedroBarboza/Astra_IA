@@ -2,93 +2,120 @@
 
 import { useMemo, useRef, type RefObject } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { MeshDistortMaterial, Sparkles, Sphere, Torus } from "@react-three/drei";
+import { Sparkles } from "@react-three/drei";
 import * as THREE from "three";
 import type { AstraOrbState } from "./astra-orb";
 
+/**
+ * Átomo da Astra. Três órbitas no arranjo clássico do símbolo do átomo (elipses a
+ * 0°, 60° e 120°), cada uma com o gradiente da marca e um rastro de luz que segue o
+ * elétron. No núcleo brilha a estrela de quatro pontas do logo — é ela que amarra o
+ * orbe à identidade do app. Tudo em shader/sprite, sem pós-processamento, para o
+ * canvas continuar transparente sobre o fundo.
+ */
+
 type StateConfig = {
-  distort: number;
-  wobbleSpeed: number;
-  coreScale: number;
-  coreEmissive: number;
-  coreColor: string;
-  /** Brilho da casca de energia (borda luminosa) em volta do núcleo. */
-  shell: number;
-  shellColor: string;
+  /** Velocidade angular base dos elétrons (rad/s). */
   electronSpeed: number;
-  assemblySpin: number;
-  ringOpacity: number;
-  glowOpacity: number;
+  /** Giro do conjunto em torno do eixo da câmera. */
+  spin: number;
+  /** Opacidade da parte "apagada" das órbitas. */
+  ring: number;
+  /** Brilho do rastro que acompanha cada elétron. */
+  trail: number;
+  /** Brilho do núcleo. */
+  core: number;
+  /** Intensidade da estrela do núcleo. */
+  flare: number;
+  /** Opacidade do halo. */
+  glow: number;
+  /** Cor de destaque: 0 = ciano, 1 = violeta. */
+  tint: number;
+  /** Quanto o volume do áudio (voz da Astra ou microfone) mexe no conjunto. */
+  react: number;
 };
 
+// Cada estado tem um "tom" reconhecível de relance: ouvindo puxa para o ciano,
+// pensando para o violeta e acelera; falando acende tudo e segue a voz.
 const STATE_CONFIG: Record<AstraOrbState, StateConfig> = {
-  idle: {
-    distort: 0.1, wobbleSpeed: 0.6, coreScale: 1.0, coreEmissive: 1.5, coreColor: "#cfeeff",
-    shell: 1.4, shellColor: "#4fc3f0",
-    electronSpeed: 0.9, assemblySpin: 0.08, ringOpacity: 0.72, glowOpacity: 0.72,
-  },
-  connecting: {
-    distort: 0.16, wobbleSpeed: 1.2, coreScale: 1.02, coreEmissive: 1.7, coreColor: "#dbf4ff",
-    shell: 1.6, shellColor: "#4fcdf5",
-    electronSpeed: 1.3, assemblySpin: 0.16, ringOpacity: 0.8, glowOpacity: 0.8,
-  },
-  listening: {
-    distort: 0.2, wobbleSpeed: 1.6, coreScale: 1.06, coreEmissive: 2.0, coreColor: "#e8fbff",
-    shell: 1.9, shellColor: "#4fd8ff",
-    electronSpeed: 1.7, assemblySpin: 0.2, ringOpacity: 0.9, glowOpacity: 0.9,
-  },
-  thinking: {
-    distort: 0.3, wobbleSpeed: 2.6, coreScale: 1.03, coreEmissive: 2.1, coreColor: "#dde8ff",
-    shell: 2.1, shellColor: "#7aa8ff",
-    electronSpeed: 2.6, assemblySpin: 0.36, ringOpacity: 0.88, glowOpacity: 0.92,
-  },
-  speaking: {
-    distort: 0.38, wobbleSpeed: 3.4, coreScale: 1.14, coreEmissive: 2.7, coreColor: "#ffffff",
-    shell: 2.7, shellColor: "#6fe0ff",
-    electronSpeed: 3.1, assemblySpin: 0.28, ringOpacity: 1, glowOpacity: 1,
-  },
+  idle: { electronSpeed: 0.75, spin: 0.05, ring: 0.16, trail: 0.75, core: 0.95, flare: 0.7, glow: 0.55, tint: 0.5, react: 0 },
+  connecting: { electronSpeed: 1.25, spin: 0.12, ring: 0.18, trail: 0.85, core: 1, flare: 0.8, glow: 0.65, tint: 0.55, react: 0 },
+  listening: { electronSpeed: 1.45, spin: 0.14, ring: 0.2, trail: 1, core: 1.05, flare: 0.9, glow: 0.75, tint: 0.1, react: 0.7 },
+  thinking: { electronSpeed: 2.7, spin: 0.34, ring: 0.22, trail: 1.05, core: 1.1, flare: 1, glow: 0.85, tint: 0.95, react: 0 },
+  speaking: { electronSpeed: 2, spin: 0.22, ring: 0.22, trail: 1.15, core: 1.2, flare: 1.15, glow: 1, tint: 0.45, react: 1 },
 };
 
 /** Suavidade das transições entre estados. Maior = mais rápido. */
 const EASE = 2.6;
 
+const CIANO = new THREE.Color("#38d6f5");
+const VIOLETA = new THREE.Color("#a78bfa");
+const INDIGO = new THREE.Color("#7c8cff");
+const BRANCO = new THREE.Color("#ffffff");
+
 type RingConfig = {
   id: string;
   radius: number;
-  /**
-   * Plane orientation as [x, y] Euler angles. A torus lies in its local XY plane and is
-   * symmetric around its local Z, so only X and Y tilt the plane — a Z rotation would be
-   * a no-op here. The ring reads as an open ellipse while |cos(x) * cos(y)| stays well
-   * above zero; at zero it is edge-on and collapses to a straight line.
-   */
-  tilt: [number, number];
+  /** Rotação em torno do eixo da câmera: 0°, 60° e 120° formam o símbolo do átomo. */
+  angle: number;
   direction: number;
   phase: number;
-  color: string;
+  colorA: THREE.Color;
+  colorB: THREE.Color;
   electron: string;
-
 };
 
-// Paleta unificada no ciano: variar muito o matiz entre as órbitas dispersa a leitura.
-// A diferença entre elas fica por conta do raio e da inclinação, não da cor. Os
-// elétrons são quase brancos de propósito — é o contraste com o tubo que os destaca.
+/**
+ * Inclinação comum das três elipses. cos(1.2) ≈ 0.36 é a proporção aparente: aberta o
+ * bastante para ler como órbita, achatada o bastante para lembrar o símbolo clássico.
+ */
+const TILT = 1.2;
+
 const RINGS: RingConfig[] = [
-  { id: "a", radius: 1.5, tilt: [0.3, 0.2], direction: 1, phase: 0,
-    color: "#5ec5f0", electron: "#eafcff" },
-  { id: "b", radius: 1.72, tilt: [1.0, 0.35], direction: -0.82, phase: 2.2,
-    color: "#54d2f7", electron: "#e4faff" },
-  { id: "c", radius: 1.6, tilt: [-0.95, -0.55], direction: 1.24, phase: 4.1,
-    color: "#73b9f2", electron: "#edf8ff" },
-  { id: "d", radius: 1.82, tilt: [0.62, 1.02], direction: -1.05, phase: 1.1,
-    color: "#4fbdee", electron: "#e8f9ff" },
+  { id: "a", radius: 1.6, angle: 0, direction: 1, phase: 0, colorA: VIOLETA, colorB: INDIGO, electron: "#cbbdff" },
+  { id: "b", radius: 1.6, angle: Math.PI / 3, direction: -0.86, phase: 2.1, colorA: INDIGO, colorB: CIANO, electron: "#bcc6ff" },
+  { id: "c", radius: 1.6, angle: (2 * Math.PI) / 3, direction: 1.14, phase: 4.2, colorA: CIANO, colorB: VIOLETA, electron: "#aef1ff" },
 ];
 
+// ── Shaders ──────────────────────────────────────────────────────────────
+
+const RING_VERTEX = /* glsl */ `
+  varying vec3 vLocal;
+  void main() {
+    vLocal = position;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
 /**
- * Casca de energia: o Fresnel deixa a borda da esfera acesa e o miolo transparente,
- * que é o que dá leitura de plasma em vez de disco chapado. Combinado com blending
- * aditivo, o rim soma luz sobre o núcleo sem escondê-lo.
+ * O toro fica no plano XY local, então atan(y, x) dá o ângulo do fragmento ao longo da
+ * órbita. A distância angular "atrás" do elétron define o rastro, que decai
+ * exponencialmente: cabeça acesa, cauda que some — leitura de movimento sem partículas.
  */
-const SHELL_VERTEX = /* glsl */ `
+const RING_FRAGMENT = /* glsl */ `
+  uniform vec3 uColorA;
+  uniform vec3 uColorB;
+  uniform float uElectron;
+  uniform float uDir;
+  uniform float uBase;
+  uniform float uTrail;
+  uniform float uOpacity;
+  varying vec3 vLocal;
+  const float TAU = 6.28318530718;
+
+  void main() {
+    float ang = atan(vLocal.y, vLocal.x);
+    float atras = mod((uElectron - ang) * uDir, TAU);
+    float rastro = exp(-atras * 1.5);
+    float cabeca = exp(-min(atras, TAU - atras) * 18.0);
+    vec3 cor = mix(uColorA, uColorB, 0.5 + 0.5 * cos(ang));
+    float alpha = (uBase + rastro * uTrail + cabeca * 0.7) * uOpacity;
+    gl_FragColor = vec4(cor * (1.0 + cabeca), alpha);
+    #include <colorspace_fragment>
+  }
+`;
+
+const CORE_VERTEX = /* glsl */ `
   varying vec3 vNormal;
   varying vec3 vView;
   void main() {
@@ -99,109 +126,256 @@ const SHELL_VERTEX = /* glsl */ `
   }
 `;
 
-const SHELL_FRAGMENT = /* glsl */ `
-  uniform vec3 uColor;
-  uniform float uIntensity;
-  uniform float uPower;
+/** Núcleo de vidro: centro quase branco, corpo no índigo da marca e borda acesa. */
+const CORE_FRAGMENT = /* glsl */ `
+  uniform vec3 uInner;
+  uniform vec3 uOuter;
+  uniform vec3 uRim;
+  uniform float uBright;
   varying vec3 vNormal;
   varying vec3 vView;
+
   void main() {
-    float rim = pow(1.0 - clamp(dot(vNormal, vView), 0.0, 1.0), uPower);
-    gl_FragColor = vec4(uColor, rim * uIntensity);
+    float ndv = clamp(dot(normalize(vNormal), normalize(vView)), 0.0, 1.0);
+    vec3 c = mix(uOuter, uInner, pow(ndv, 1.8));
+    c += pow(1.0 - ndv, 2.5) * uRim * 1.3;
+    gl_FragColor = vec4(c * uBright, 1.0);
+    #include <colorspace_fragment>
   }
 `;
 
-/** Soft radial-gradient sprite used to fake bloom without a postprocessing pass. */
-let glowTexture: THREE.CanvasTexture | undefined;
+/** Casca aditiva em volta do núcleo: borda luminosa contínua, sem vão escuro. */
+const SHELL_FRAGMENT = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uIntensity;
+  varying vec3 vNormal;
+  varying vec3 vView;
 
-function getGlowTexture() {
-  if (!glowTexture) {
-    const size = 128;
-    const canvas = document.createElement("canvas");
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext("2d")!;
-    const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-    gradient.addColorStop(0, "rgba(255,255,255,1)");
-    gradient.addColorStop(0.18, "rgba(214,234,255,0.72)");
-    gradient.addColorStop(0.45, "rgba(120,180,255,0.25)");
-    gradient.addColorStop(1, "rgba(80,140,255,0)");
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, size, size);
-    glowTexture = new THREE.CanvasTexture(canvas);
+  void main() {
+    float rim = pow(1.0 - clamp(dot(normalize(vNormal), normalize(vView)), 0.0, 1.0), 2.2);
+    gl_FragColor = vec4(uColor, rim * uIntensity);
+    #include <colorspace_fragment>
   }
-  return glowTexture;
+`;
+
+// ── Texturas geradas em canvas ──────────────────────────────────────────
+
+const texturas: Partial<Record<"radial" | "halo" | "estrela", THREE.CanvasTexture>> = {};
+
+function criarCanvas(size: number) {
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  return { canvas, ctx: canvas.getContext("2d")! };
 }
 
-function Glow({ scale, opacity }: { scale: number; opacity: number }) {
-  const materialRef = useRef<THREE.SpriteMaterial>(null);
+/** Brilho radial branco; a cor vem do material (tinge sem gerar uma textura por cor). */
+function texturaRadial() {
+  if (!texturas.radial) {
+    const size = 128;
+    const { canvas, ctx } = criarCanvas(size);
+    const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    g.addColorStop(0, "rgba(255,255,255,1)");
+    g.addColorStop(0.2, "rgba(255,255,255,0.6)");
+    g.addColorStop(0.5, "rgba(255,255,255,0.15)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+    texturas.radial = new THREE.CanvasTexture(canvas);
+  }
+  return texturas.radial;
+}
 
-  useFrame((_, delta) => {
-    if (materialRef.current) {
-      materialRef.current.opacity = THREE.MathUtils.damp(
-        materialRef.current.opacity,
-        opacity,
-        EASE,
-        delta,
-      );
-    }
+/** Halo no gradiente da marca: lavanda no centro, índigo e ciano nas bordas. */
+function texturaHalo() {
+  if (!texturas.halo) {
+    const size = 256;
+    const { canvas, ctx } = criarCanvas(size);
+    const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    g.addColorStop(0, "rgba(214,206,255,0.9)");
+    g.addColorStop(0.16, "rgba(150,140,255,0.45)");
+    g.addColorStop(0.42, "rgba(110,125,255,0.14)");
+    g.addColorStop(0.7, "rgba(56,214,245,0.04)");
+    g.addColorStop(1, "rgba(56,214,245,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+    texturas.halo = new THREE.CanvasTexture(canvas);
+  }
+  return texturas.halo;
+}
+
+/**
+ * Estrela de quatro pontas do logo, desenhada como lens flare: duas lanças longas
+ * (vertical e horizontal), duas diagonais curtas e um ponto central.
+ */
+function texturaEstrela() {
+  if (!texturas.estrela) {
+    const size = 512;
+    const c = size / 2;
+    const { canvas, ctx } = criarCanvas(size);
+    ctx.globalCompositeOperation = "lighter";
+
+    const lanca = (angulo: number, comprimento: number, largura: number, alpha: number) => {
+      ctx.save();
+      ctx.translate(c, c);
+      ctx.rotate(angulo);
+      ctx.scale(largura, comprimento);
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, c);
+      g.addColorStop(0, `rgba(255,255,255,${alpha})`);
+      g.addColorStop(0.25, `rgba(255,255,255,${alpha * 0.45})`);
+      g.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(0, 0, c, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    };
+
+    lanca(0, 1, 0.045, 1);
+    lanca(Math.PI / 2, 1, 0.045, 1);
+    lanca(Math.PI / 4, 0.42, 0.03, 0.55);
+    lanca(-Math.PI / 4, 0.42, 0.03, 0.55);
+
+    const centro = ctx.createRadialGradient(c, c, 0, c, c, size * 0.12);
+    centro.addColorStop(0, "rgba(255,255,255,1)");
+    centro.addColorStop(0.35, "rgba(255,255,255,0.5)");
+    centro.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = centro;
+    ctx.fillRect(0, 0, size, size);
+
+    texturas.estrela = new THREE.CanvasTexture(canvas);
+  }
+  return texturas.estrela;
+}
+
+// ── Componentes ─────────────────────────────────────────────────────────
+
+/** Estado animado compartilhado: amortecido a cada quadro, nunca salta entre estados. */
+type Anim = {
+  time: number;
+  nivel: number;
+  reacao: number;
+  spin: number;
+  ring: number;
+  trail: number;
+  core: number;
+  flare: number;
+  glow: number;
+  tint: number;
+};
+
+function useAnim(state: AstraOrbState, nivelRef: RefObject<number> | undefined) {
+  const anim = useRef<Anim>({
+    time: 0,
+    nivel: 0,
+    reacao: 0,
+    ...pick(STATE_CONFIG.idle),
   });
 
-  return (
-    <sprite scale={[scale, scale, 1]}>
-      <spriteMaterial
-        ref={materialRef}
-        map={getGlowTexture()}
-        blending={THREE.AdditiveBlending}
-        depthWrite={false}
-        transparent
-        opacity={opacity}
-      />
-    </sprite>
-  );
+  // Os filhos se inscrevem no useFrame antes do pai (efeitos rodam de dentro para fora),
+  // então leem os valores do quadro anterior — um quadro de atraso, imperceptível.
+  useFrame((_, delta) => {
+    const alvo = STATE_CONFIG[state];
+    const a = anim.current;
+    a.time += delta;
+    a.nivel = THREE.MathUtils.damp(a.nivel, Math.min(1, (nivelRef?.current ?? 0) * 2.4), 10, delta);
+    a.reacao = a.nivel * alvo.react;
+    a.spin = THREE.MathUtils.damp(a.spin, alvo.spin, EASE, delta);
+    a.ring = THREE.MathUtils.damp(a.ring, alvo.ring, EASE, delta);
+    a.trail = THREE.MathUtils.damp(a.trail, alvo.trail, EASE, delta);
+    a.core = THREE.MathUtils.damp(a.core, alvo.core, EASE, delta);
+    a.flare = THREE.MathUtils.damp(a.flare, alvo.flare, EASE, delta);
+    a.glow = THREE.MathUtils.damp(a.glow, alvo.glow, EASE, delta);
+    a.tint = THREE.MathUtils.damp(a.tint, alvo.tint, EASE, delta);
+  });
+
+  return anim;
 }
 
-function Core({ state }: { state: AstraOrbState }) {
-  const meshRef = useRef<THREE.Mesh>(null);
-  // drei não exporta o tipo concreto do MeshDistortMaterial; distort, time, emissive e
-  // emissiveIntensity são propriedades mutáveis comuns da instância do material.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const materialRef = useRef<any>(null);
+function pick(c: StateConfig) {
+  return { spin: c.spin, ring: c.ring, trail: c.trail, core: c.core, flare: c.flare, glow: c.glow, tint: c.tint };
+}
 
-  const shellRef = useRef<THREE.ShaderMaterial>(null);
-  const shellUniforms = useMemo(
+type AnimRef = RefObject<Anim>;
+
+function Nucleo({ anim }: { anim: AnimRef }) {
+  const esfera = useRef<THREE.Mesh>(null);
+  const casca = useRef<THREE.Mesh>(null);
+  const estrela = useRef<THREE.SpriteMaterial>(null);
+  const estrelaSprite = useRef<THREE.Sprite>(null);
+  const halo = useRef<THREE.SpriteMaterial>(null);
+  const materialNucleo = useRef<THREE.ShaderMaterial>(null);
+  const materialCasca = useRef<THREE.ShaderMaterial>(null);
+  const corDestaque = useRef(new THREE.Color());
+
+  // Valores iniciais; a animação escreve nos uniforms pelo ref do material (mutável),
+  // não nestes objetos memorizados.
+  const coreUniforms = useMemo(
     () => ({
-      uColor: { value: new THREE.Color(STATE_CONFIG.idle.shellColor) },
-      uIntensity: { value: STATE_CONFIG.idle.shell },
-      uPower: { value: 2.4 },
+      uInner: { value: new THREE.Color("#f4f1ff") },
+      uOuter: { value: new THREE.Color("#5b5cf0") },
+      uRim: { value: new THREE.Color().copy(CIANO) },
+      uBright: { value: 1 },
     }),
     [],
   );
+  const shellUniforms = useMemo(
+    () => ({ uColor: { value: new THREE.Color().copy(INDIGO) }, uIntensity: { value: 1.4 } }),
+    [],
+  );
+
+  useFrame(() => {
+    const a = anim.current;
+    corDestaque.current.copy(CIANO).lerp(VIOLETA, a.tint);
+
+    // Respiração lenta por cima da reação à voz.
+    const respira = 1 + Math.sin(a.time * 1.6) * 0.025;
+    const escala = respira * (1 + a.reacao * 0.28);
+    esfera.current?.scale.setScalar(escala);
+    casca.current?.scale.setScalar(escala * 1.22);
+
+    const uNucleo = materialNucleo.current?.uniforms;
+    if (uNucleo) {
+      uNucleo.uBright.value = a.core + a.reacao * 0.3;
+      uNucleo.uRim.value.copy(corDestaque.current);
+    }
+    const uCasca = materialCasca.current?.uniforms;
+    if (uCasca) {
+      uCasca.uColor.value.copy(INDIGO).lerp(corDestaque.current, 0.5);
+      uCasca.uIntensity.value = 1.3 + a.reacao * 0.8;
+    }
+
+    if (estrela.current && estrelaSprite.current) {
+      const s = 1.55 * a.flare * (1 + a.reacao * 0.55) * (1 + Math.sin(a.time * 2.1) * 0.04);
+      estrelaSprite.current.scale.set(s, s, 1);
+      estrela.current.rotation = Math.sin(a.time * 0.25) * 0.12;
+      estrela.current.opacity = Math.min(1, 0.55 + a.flare * 0.4 + a.reacao * 0.3);
+      estrela.current.color.copy(corDestaque.current).lerp(BRANCO, 0.55);
+    }
+    if (halo.current) halo.current.opacity = Math.min(1, a.glow * 0.8 + a.reacao * 0.25);
+  });
 
   return (
     <group>
-      <Sphere ref={meshRef} args={[0.34, 96, 96]}>
-        <MeshDistortMaterial
-          ref={materialRef}
-          color="#2a7fd4"
-          emissive="#9ec6ff"
-          emissiveIntensity={0.85}
-          distort={0.1}
-          // O tempo é dirigido pelo CoreAnimator; ver o comentário lá.
-          speed={0}
-          roughness={0.3}
-          metalness={0.1}
-          toneMapped={false}
-        />
-      </Sphere>
+      <sprite scale={[3.2, 3.2, 1]}>
+        <spriteMaterial ref={halo} map={texturaHalo()} blending={THREE.AdditiveBlending} depthWrite={false} transparent />
+      </sprite>
 
-      {/* Escala baixa de propósito: afastar demais a casca abre um vão escuro entre
-          ela e o núcleo, que lê como eclipse em vez de brilho contínuo. */}
-      <mesh scale={1.16}>
-        <sphereGeometry args={[0.34, 64, 64]} />
+      <mesh ref={esfera}>
+        <sphereGeometry args={[0.3, 64, 64]} />
         <shaderMaterial
-          ref={shellRef}
-          vertexShader={SHELL_VERTEX}
+          ref={materialNucleo}
+          vertexShader={CORE_VERTEX}
+          fragmentShader={CORE_FRAGMENT}
+          uniforms={coreUniforms}
+        />
+      </mesh>
+
+      <mesh ref={casca}>
+        <sphereGeometry args={[0.3, 48, 48]} />
+        <shaderMaterial
+          ref={materialCasca}
+          vertexShader={CORE_VERTEX}
           fragmentShader={SHELL_FRAGMENT}
           uniforms={shellUniforms}
           transparent
@@ -210,202 +384,170 @@ function Core({ state }: { state: AstraOrbState }) {
         />
       </mesh>
 
-      <CoreAnimator
-        state={state}
-        meshRef={meshRef}
-        materialRef={materialRef}
-        shellRef={shellRef}
-      />
-      <Glow scale={4.6} opacity={STATE_CONFIG[state].glowOpacity} />
+      {/* Desenhada por cima de tudo: é luz, não objeto — não deve ser escondida pelo núcleo. */}
+      <sprite ref={estrelaSprite} renderOrder={10}>
+        <spriteMaterial
+          ref={estrela}
+          map={texturaEstrela()}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+          depthTest={false}
+          transparent
+        />
+      </sprite>
     </group>
   );
 }
 
-function CoreAnimator({
+function Orbita({ ring, anim, state }: { ring: RingConfig; anim: AnimRef; state: AstraOrbState }) {
+  const eletron = useRef<THREE.Group>(null);
+  const brilhoEletron = useRef<THREE.SpriteMaterial>(null);
+  const angulo = useRef(ring.phase);
+  const velocidade = useRef(STATE_CONFIG.idle.electronSpeed);
+  const materialLinha = useRef<THREE.ShaderMaterial>(null);
+
+  const linha = useMemo(
+    () => ({
+      uColorA: { value: ring.colorA },
+      uColorB: { value: ring.colorB },
+      uElectron: { value: ring.phase },
+      uDir: { value: Math.sign(ring.direction) },
+      uBase: { value: STATE_CONFIG.idle.ring },
+      uTrail: { value: STATE_CONFIG.idle.trail },
+      uOpacity: { value: 1 },
+    }),
+    [ring],
+  );
+  // Mesmo shader num tubo mais grosso e fraco: finge o bloom em volta da linha. Os
+  // uniforms são os mesmos objetos da linha (só a opacidade é própria), então animar a
+  // linha anima o halo junto.
+  const halo = useMemo(() => ({ ...linha, uOpacity: { value: 0.22 } }), [linha]);
+
+  useFrame((_, delta) => {
+    const a = anim.current;
+    velocidade.current = THREE.MathUtils.damp(
+      velocidade.current,
+      STATE_CONFIG[state].electronSpeed * (1 + a.reacao * 0.6),
+      EASE,
+      delta,
+    );
+    angulo.current += delta * ring.direction * velocidade.current;
+
+    const u = materialLinha.current?.uniforms;
+    if (u) {
+      u.uElectron.value = angulo.current;
+      u.uBase.value = a.ring;
+      u.uTrail.value = a.trail + a.reacao * 0.4;
+    }
+
+    eletron.current?.position.set(
+      ring.radius * Math.cos(angulo.current),
+      ring.radius * Math.sin(angulo.current),
+      0,
+    );
+    if (brilhoEletron.current) brilhoEletron.current.opacity = Math.min(1, 0.6 + a.trail * 0.35);
+  });
+
+  return (
+    <group rotation={[0, 0, ring.angle]}>
+      <group rotation={[TILT, 0, 0]}>
+        <mesh>
+          <torusGeometry args={[ring.radius, 0.015, 8, 260]} />
+          <shaderMaterial
+            ref={materialLinha}
+            vertexShader={RING_VERTEX}
+            fragmentShader={RING_FRAGMENT}
+            uniforms={linha}
+            transparent
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+          />
+        </mesh>
+        <mesh>
+          <torusGeometry args={[ring.radius, 0.06, 8, 200]} />
+          <shaderMaterial
+            vertexShader={RING_VERTEX}
+            fragmentShader={RING_FRAGMENT}
+            uniforms={halo}
+            transparent
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+          />
+        </mesh>
+
+        <group ref={eletron}>
+          <mesh>
+            <sphereGeometry args={[0.06, 20, 20]} />
+            <meshBasicMaterial color="#ffffff" toneMapped={false} />
+          </mesh>
+          <sprite scale={[0.62, 0.62, 1]}>
+            <spriteMaterial
+              ref={brilhoEletron}
+              map={texturaRadial()}
+              color={ring.electron}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+              transparent
+            />
+          </sprite>
+        </group>
+      </group>
+    </group>
+  );
+}
+
+function Atomo({
   state,
-  meshRef,
-  materialRef,
-  shellRef,
+  nivelRef,
+  movimentoReduzido,
 }: {
   state: AstraOrbState;
-  meshRef: RefObject<THREE.Mesh | null>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  materialRef: RefObject<any>;
-  shellRef: RefObject<THREE.ShaderMaterial | null>;
+  nivelRef?: RefObject<number>;
+  movimentoReduzido: boolean;
 }) {
-  const anim = useRef({
-    time: 0,
-    speed: STATE_CONFIG.idle.wobbleSpeed,
-    scale: STATE_CONFIG.idle.coreScale,
-  });
-  const targetColor = useRef(new THREE.Color());
-  const targetShellColor = useRef(new THREE.Color());
+  const anim = useAnim(state, nivelRef);
+  const conjunto = useRef<THREE.Group>(null);
 
-  // Este componente é irmão do <Sphere> e renderiza depois dele, então seu useFrame é
-  // registrado depois do interno do MeshDistortMaterial e sobrescreve o que ele escreveu.
-  // Isso importa: o material faz `time = elapsedTime * speed`, o que cria um salto de
-  // fase na deformação sempre que a velocidade muda. Aqui o tempo é acumulado
-  // (`time += delta * speed`), então mudar de estado acelera a onda sem cortá-la.
   useFrame((_, delta) => {
-    const target = STATE_CONFIG[state];
+    const g = conjunto.current;
+    if (!g) return;
     const a = anim.current;
-
-    a.speed = THREE.MathUtils.damp(a.speed, target.wobbleSpeed, EASE, delta);
-    a.time += delta * a.speed;
-    a.scale = THREE.MathUtils.damp(a.scale, target.coreScale, EASE, delta);
-
-    const material = materialRef.current;
-    if (material) {
-      material.time = a.time;
-      material.distort = THREE.MathUtils.damp(material.distort, target.distort, EASE, delta);
-      material.emissiveIntensity = THREE.MathUtils.damp(
-        material.emissiveIntensity,
-        target.coreEmissive,
-        EASE,
-        delta,
-      );
-      targetColor.current.set(target.coreColor);
-      material.emissive.lerp(targetColor.current, 1 - Math.exp(-EASE * delta));
-    }
-
-    const shell = shellRef.current;
-    if (shell) {
-      const u = shell.uniforms;
-      u.uIntensity.value = THREE.MathUtils.damp(u.uIntensity.value, target.shell, EASE, delta);
-      targetShellColor.current.set(target.shellColor);
-      u.uColor.value.lerp(targetShellColor.current, 1 - Math.exp(-EASE * delta));
-      // A borda pulsa de leve junto com a respiração, dando vida ao plasma.
-      u.uPower.value = 1.9 + Math.sin(a.time * 0.7) * 0.22;
-    }
-
-    if (meshRef.current) {
-      // Respiração sutil aplicada por cima da escala do estado, em vez de somada ao
-      // alvo do damp — somar faria o amortecimento engolir a oscilação.
-      const breath = 1 + Math.sin(a.time * 0.5) * 0.015;
-      meshRef.current.scale.setScalar(a.scale * breath);
-    }
+    // Giro sobretudo no eixo da câmera, que preserva o desenho do símbolo; a oscilação
+    // pequena em X/Y dá profundidade sem achatar as elipses em linhas.
+    g.rotation.z += delta * a.spin * (movimentoReduzido ? 0.2 : 1);
+    g.rotation.x = Math.sin(a.time * 0.3) * 0.12;
+    g.rotation.y = Math.cos(a.time * 0.24) * 0.16;
   });
 
-  return null;
-}
-
-function Electron({ ring, state }: { ring: RingConfig; state: AstraOrbState }) {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const angle = useRef(ring.phase);
-  const speed = useRef(STATE_CONFIG.idle.electronSpeed);
-
-  useFrame((_, delta) => {
-    speed.current = THREE.MathUtils.damp(
-      speed.current,
-      STATE_CONFIG[state].electronSpeed,
-      EASE,
-      delta,
-    );
-    angle.current += delta * ring.direction * speed.current;
-    if (meshRef.current) {
-      meshRef.current.position.set(
-        ring.radius * Math.cos(angle.current),
-        ring.radius * Math.sin(angle.current),
-        0,
-      );
-    }
-  });
-
-  // Sem rastro de cometa: com os tubos grossos e acesos carregando o brilho, as caudas
-  // viravam um oitavo traço luminoso por cima das órbitas e o conjunto embolava.
   return (
-    <mesh ref={meshRef}>
-      <sphereGeometry args={[0.105, 24, 24]} />
-      <meshBasicMaterial color={ring.electron} toneMapped={false} />
-      <Glow scale={1.5} opacity={STATE_CONFIG[state].glowOpacity * 0.85} />
-    </mesh>
+    <>
+      <group ref={conjunto}>
+        {RINGS.map((ring) => (
+          <Orbita key={ring.id} ring={ring} anim={anim} state={state} />
+        ))}
+      </group>
+      <Nucleo anim={anim} />
+    </>
   );
 }
 
-function Ring({ ring, state }: { ring: RingConfig; state: AstraOrbState }) {
-  const materialRef = useRef<THREE.MeshBasicMaterial>(null);
-
-  useFrame((_, delta) => {
-    if (materialRef.current) {
-      materialRef.current.opacity = THREE.MathUtils.damp(
-        materialRef.current.opacity,
-        STATE_CONFIG[state].ringOpacity,
-        EASE,
-        delta,
-      );
-    }
-  });
-
-  return (
-    <group rotation={[ring.tilt[0], ring.tilt[1], 0]}>
-      {/* Halo: um segundo toro bem mais grosso e aditivo por trás do primeiro finge o
-          bloom em volta do tubo, sem precisar de passe de pós-processamento (que
-          quebrava a transparência do canvas). */}
-      <Torus args={[ring.radius, 0.075, 8, 120]}>
-        <meshBasicMaterial
-          color={ring.color}
-          transparent
-          opacity={0.1}
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
-          toneMapped={false}
-        />
-      </Torus>
-
-      <Torus args={[ring.radius, 0.028, 10, 180]}>
-        <meshBasicMaterial
-          ref={materialRef}
-          color={ring.color}
-          transparent
-          opacity={0.8}
-          toneMapped={false}
-        />
-      </Torus>
-
-      <Electron ring={ring} state={state} />
-    </group>
+export function AstraOrbScene({
+  state,
+  nivelRef,
+}: {
+  state: AstraOrbState;
+  nivelRef?: RefObject<number>;
+}) {
+  const movimentoReduzido = useMemo(
+    () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    [],
   );
-}
-
-function Assembly({ state }: { state: AstraOrbState }) {
-  const spinRef = useRef<THREE.Group>(null);
-  const spin = useRef(STATE_CONFIG.idle.assemblySpin);
-
-  useFrame((_, delta) => {
-    spin.current = THREE.MathUtils.damp(
-      spin.current,
-      STATE_CONFIG[state].assemblySpin,
-      EASE,
-      delta,
-    );
-    if (spinRef.current) {
-      // Girar sobretudo no eixo da câmera mantém a excentricidade aparente dos anéis
-      // estável; o componente menor em Y dá profundidade sem achatá-los em linhas.
-      spinRef.current.rotation.z += delta * spin.current;
-      spinRef.current.rotation.y += delta * spin.current * 0.3;
-    }
-  });
 
   return (
-    <group ref={spinRef}>
-      <Core state={state} />
-      {RINGS.map((ring) => (
-        <Ring key={ring.id} ring={ring} state={state} />
-      ))}
-    </group>
-  );
-}
-
-export function AstraOrbScene({ state }: { state: AstraOrbState }) {
-  return (
-    <Canvas camera={{ position: [0, 0, 6.9], fov: 38 }} gl={{ antialias: true, alpha: true }} dpr={[1, 2]}>
-      <ambientLight intensity={0.8} />
-      <pointLight position={[3, 2, 4]} intensity={2.2} color="#cfe2ff" />
-      <pointLight position={[-4, -2, -3]} intensity={1.1} color="#7c6ff0" />
-      <Assembly state={state} />
-      {/* Poeira estelar: fica fora do grupo que gira, para flutuar em volta em vez
-          de acompanhar a rotação do átomo. */}
-      <Sparkles count={34} scale={7} size={1.5} speed={0.2} opacity={0.32} color="#9ec8ff" noise={0.45} />
+    <Canvas camera={{ position: [0, 0, 6.1], fov: 38 }} gl={{ antialias: true, alpha: true }} dpr={[1, 2]}>
+      <Atomo state={state} nivelRef={nivelRef} movimentoReduzido={movimentoReduzido} />
+      {/* Poeira estelar fora do conjunto que gira: flutua em volta, não acompanha o átomo. */}
+      <Sparkles count={36} scale={6.5} size={1.4} speed={0.18} opacity={0.3} color="#b8c2ff" noise={0.4} />
     </Canvas>
   );
 }

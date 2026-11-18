@@ -2,6 +2,7 @@
 
 import { Track } from "livekit-client";
 import { useTracks, VideoTrack } from "@livekit/components-react";
+import { EyeOffIcon, ScanEyeIcon } from "./icons";
 
 export function VideoPreview() {
   const tracks = useTracks([Track.Source.ScreenShare, Track.Source.Camera], {
@@ -13,27 +14,36 @@ export function VideoPreview() {
   const isScreen = local?.source === Track.Source.ScreenShare;
 
   return (
-    <section className="astra-panel overflow-hidden">
-      <header className="flex items-center gap-2 border-b border-white/6 px-4 py-3">
-        <h2 className="text-[11px] font-medium tracking-widest text-(--astra-text-dimmer)">
-          O QUE A ASTRA VÊ
-        </h2>
-        {local && (
-          <span className="ml-auto flex items-center gap-1.5 text-[11px] text-(--astra-text-dim)">
-            <span className="h-1.5 w-1.5 rounded-full bg-(--astra-online)" />
-            {isScreen ? "Tela" : "Câmera"}
-          </span>
-        )}
+    <section className="panel shrink-0 overflow-hidden">
+      <header className="flex h-12 items-center gap-2.5 border-b border-line px-4">
+        <ScanEyeIcon size={16} className="text-muted" />
+        <h2 className="text-sm font-medium text-fg">Visão computacional</h2>
+        <span
+          className={`ml-auto flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
+            local ? "bg-accent/15 text-accent" : "bg-white/5 text-subtle"
+          }`}
+        >
+          {local && <span className="h-1.5 w-1.5 rounded-full bg-accent" />}
+          {local ? (isScreen ? "Tela" : "Câmera") : "Desligada"}
+        </span>
       </header>
 
-      <div className="relative aspect-video w-full bg-black/35">
+      <div className="relative aspect-video w-full bg-black/40">
         {local ? (
-          <VideoTrack trackRef={local} className="h-full w-full object-contain" />
+          <>
+            <VideoTrack trackRef={local} className="h-full w-full object-contain" />
+            <MolduraDeAnalise />
+          </>
         ) : (
-          <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-4 text-center">
-            <EyeOffIcon />
-            <p className="text-xs text-(--astra-text-dimmer)">
-              Ligue a câmera ou compartilhe a tela para a Astra enxergar.
+          <div className="bg-dots absolute inset-0" />
+        )}
+        {!local && (
+          <div className="relative flex h-full w-full flex-col items-center justify-center gap-2.5 px-6 text-center">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-line bg-white/3 text-subtle">
+              <EyeOffIcon size={16} />
+            </span>
+            <p className="max-w-56 text-xs leading-relaxed text-muted">
+              Ligue a câmera ou compartilhe a tela para a Astra enxergar o que você vê.
             </p>
           </div>
         )}
@@ -42,22 +52,16 @@ export function VideoPreview() {
   );
 }
 
-function EyeOffIcon() {
+/** Cantos de mira e linha de varredura: deixam claro que a imagem está sendo analisada. */
+function MolduraDeAnalise() {
+  const canto = "absolute h-5 w-5 border-accent-cyan/80";
   return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="text-(--astra-text-dimmer)"
-    >
-      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
-      <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
-      <line x1="1" y1="1" x2="23" y2="23" />
-    </svg>
+    <div aria-hidden className="pointer-events-none absolute inset-3">
+      <span className={`${canto} left-0 top-0 rounded-tl-md border-l-2 border-t-2`} />
+      <span className={`${canto} right-0 top-0 rounded-tr-md border-r-2 border-t-2`} />
+      <span className={`${canto} bottom-0 left-0 rounded-bl-md border-b-2 border-l-2`} />
+      <span className={`${canto} bottom-0 right-0 rounded-br-md border-b-2 border-r-2`} />
+      <span className="absolute inset-x-0 h-px animate-scan bg-linear-to-r from-transparent via-accent-cyan/70 to-transparent shadow-[0_0_12px_var(--color-accent-cyan)]" />
+    </div>
   );
 }

@@ -51,3 +51,6 @@ desktop.ini
 # ─── Diversos ─────────────────────────────────────────────────────────────
 *.log
 coverage/
+
+# Material do TCC (diagramas e imagens de custo): fica só local, não vai para o repositório.
+/docs/
