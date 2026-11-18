@@ -56,6 +56,10 @@ export const sessaoVoz = pgTable(
     tokensEntradaImagemCache: integer("tokens_entrada_imagem_cache").default(0).notNull(),
     tokensSaidaTexto: integer("tokens_saida_texto").default(0).notNull(),
     tokensSaidaAudio: integer("tokens_saida_audio").default(0).notNull(),
+    /** Pesquisas na internet feitas pela Astra na sessão e o custo delas (já incluso em custoUsd). */
+    buscasWeb: integer("buscas_web").default(0).notNull(),
+    custoBuscaUsd: doublePrecision("custo_busca_usd").default(0).notNull(),
+    /** Custo total da sessão: voz, transcrição e pesquisas. É o que consome os créditos. */
     custoUsd: doublePrecision("custo_usd").default(0).notNull(),
   },
   (t) => [index("sessao_voz_user_iniciada_idx").on(t.userId, t.iniciadaEm)],

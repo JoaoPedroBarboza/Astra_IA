@@ -17,11 +17,29 @@
   servidor. O mute continua disponível pelo botão do frontend.
 - Dependências com versões fixas e `Dockerfile` para deploy.
 
+## Modelo de voz, data e pesquisa na internet
+
+- **Modelo:** `gpt-realtime-2.1-mini` (conhecimento até set/2024), com raciocínio em `low`.
+  Substitui o `gpt-realtime-mini` (até out/2023), que a OpenAI desliga em 20/01/2027; o
+  preço por token é o mesmo. `ASTRA_MODELO_VOZ` troca o modelo sem mudar código.
+- **Data:** a data e a hora de Brasília entram nas instruções no início de cada sessão;
+  sem isso o modelo não sabe que dia é hoje.
+- **Pesquisa (`busca.py`):** a ferramenta `buscar_na_web` deixa a Astra consultar a
+  internet para assuntos atuais. A API Realtime não tem a busca da OpenAI embutida, então a
+  ferramenta chama a Responses API com `web_search` no `gpt-5.4-mini` (`ASTRA_MODELO_BUSCA`),
+  que devolve um resumo curto com o nome das fontes. Leva ~4–8 s; o prompt manda a Astra
+  avisar que vai pesquisar.
+- **Custo da pesquisa:** US$ 10 por 1.000 buscas mais os tokens do modelo de texto, em
+  torno de US$ 0,02–0,03 por pergunta (o modelo pode fazer mais de uma busca). O agente
+  envia o consumo no relatório de uso e o app soma aos créditos (`BUSCA_WEB` em
+  `client/lib/planos.ts`).
+
 ## Consumo e limites de plano
 
-`uso.py` lê os tokens acumulados da sessão (`session.usage`) e os envia ao app em
-`POST {ASTRA_APP_URL}/api/uso` a cada 15 s e no encerramento, autenticado por
-`ASTRA_AGENT_SECRET`. O app converte em créditos, aplica o plano do usuário e responde
+`uso.py` lê os tokens acumulados da sessão (`session.usage`) e o consumo das pesquisas e
+os envia ao app em `POST {ASTRA_APP_URL}/api/uso` a cada 15 s e no encerramento,
+autenticado por `ASTRA_AGENT_SECRET`. A saída de texto é contada como "saída total menos
+áudio", para incluir o raciocínio do modelo. O app converte em créditos, aplica o plano do usuário e responde
 se a sessão deve terminar; nesse caso a Astra se despede e o agente apaga a sala.
 
 **Sem `ASTRA_APP_URL` e `ASTRA_AGENT_SECRET` o consumo não é medido nem limitado** — o
@@ -38,7 +56,7 @@ agente só informa a sala; o app sabe a qual conversa e usuário ela pertence.
   entra nas **instruções** da Astra. Não entra como mensagens no `chat_ctx` porque, segundo
   a documentação do plugin OpenAI da LiveKit, histórico carregado pode fazer o Realtime
   responder em texto em vez de voz.
-- **Título:** no fim da primeira sessão, `gpt-4o-mini` (ou `ASTRA_MODELO_TITULO`) gera um
+- **Título:** no fim da primeira sessão, `gpt-5.4-mini` (ou `ASTRA_MODELO_TITULO`) gera um
   título curto. Custa uma fração de centavo de dólar por conversa e não entra nos créditos.
 - `cliente_app.py` é o cliente HTTP compartilhado por `uso.py` e `historico.py`.
 

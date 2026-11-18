@@ -19,6 +19,7 @@ from collections.abc import Awaitable, Callable
 from livekit.agents import AgentSession
 from livekit.agents.metrics import LLMModelUsage
 
+from busca import BuscaWeb
 from cliente_app import ClienteApp
 
 logger = logging.getLogger("astra.uso")
@@ -38,10 +39,13 @@ CAMPOS = (
 
 
 class MedidorDeUso:
-    def __init__(self, session: AgentSession, sala: str, cliente: ClienteApp) -> None:
+    def __init__(
+        self, session: AgentSession, sala: str, cliente: ClienteApp, busca: BuscaWeb | None = None
+    ) -> None:
         self._session = session
         self._sala = sala
         self._cliente = cliente
+        self._busca = busca
         self._inicio = time.monotonic()
         self._tarefa: asyncio.Task[None] | None = None
         self._encerrando = False
@@ -58,7 +62,10 @@ class MedidorDeUso:
                 t["entradaAudioCache"] += u.input_cached_audio_tokens
                 t["entradaImagem"] += u.input_image_tokens
                 t["entradaImagemCache"] += u.input_cached_image_tokens
-                t["saidaTexto"] += u.output_text_tokens
+                # Saída de texto = total - áudio, e não output_text_tokens: assim o
+                # raciocínio dos modelos 2.x (cobrado como saída de texto) entra na conta,
+                # venha ele somado ao texto ou separado.
+                t["saidaTexto"] += max(u.output_text_tokens, u.output_tokens - u.output_audio_tokens)
                 t["saidaAudio"] += u.output_audio_tokens
         return t
 
@@ -69,6 +76,9 @@ class MedidorDeUso:
             "tokens": self._tokens(),
             "final": final,
         }
+        if self._busca is not None:
+            # Pesquisas na internet (busca.py): cobradas à parte, somadas ao custo pelo app.
+            corpo["busca"] = dict(self._busca.uso)
         # O relatório final é o que fecha a conta da sessão: vale insistir um pouco.
         return await self._cliente.chamar("POST", "/api/uso", json=corpo, tentativas=3 if final else 1)
 

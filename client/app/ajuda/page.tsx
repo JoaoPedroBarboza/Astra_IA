@@ -194,6 +194,12 @@ export default function Ajuda() {
                 ]}
               />
 
+              <Dica tom="info">
+                Pergunte sobre <b>assuntos atuais</b>, como notícias, cotações, clima ou resultados de jogos, e a
+                Astra pesquisa na internet antes de responder. Ela avisa que vai pesquisar, e a resposta leva alguns
+                segundos a mais.
+              </Dica>
+
               <h3 className="mb-3 mt-8 text-sm font-semibold text-fg">A barra de controles</h3>
               <ul className="grid gap-2.5 sm:grid-cols-2">
                 <Controle icone={<MicIcon size={16} />} nome="Microfone">
@@ -321,7 +327,8 @@ export default function Ajuda() {
 
             <Secao topico={topico("planos")}>
               <p>
-                Cada conversa usa <b>créditos</b> do seu plano, de acordo com o quanto a Astra fala, ouve e vê. Seu
+                Cada conversa usa <b>créditos</b> do seu plano, de acordo com o quanto a Astra fala, ouve, vê e
+                pesquisa na internet. Seu
                 saldo aparece no menu lateral, em <b>Seu plano</b>, e na tela inicial, com uma estimativa de quantos
                 minutos de conversa ainda restam.
               </p>

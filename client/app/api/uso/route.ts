@@ -4,7 +4,15 @@ import { recusarSeNaoForAgente } from "@/lib/agente";
 import { db } from "@/lib/db";
 import { user } from "@/lib/db/schema";
 import { sessaoVoz } from "@/lib/db/schema-app";
-import { CAMPOS_TOKENS, custoUsd, PLANOS, type Tokens } from "@/lib/planos";
+import {
+  CAMPOS_BUSCA,
+  CAMPOS_TOKENS,
+  custoBuscaUsd,
+  custoUsd,
+  PLANOS,
+  type Tokens,
+  type UsoBusca,
+} from "@/lib/planos";
 import { resumoDoPlano } from "@/lib/planos-servidor";
 
 /**
@@ -36,11 +44,21 @@ export async function POST(req: Request) {
     if (v === null) return NextResponse.json({ error: `Campo inválido: tokens.${campo}` }, { status: 400 });
     tokens[campo] = v;
   }
+  // Pesquisas na internet: opcional, para aceitar relatórios de agentes anteriores a ela.
+  const busca: UsoBusca = { buscas: 0, entrada: 0, entradaCache: 0, saida: 0 };
+  if (corpo?.busca !== undefined) {
+    for (const campo of CAMPOS_BUSCA) {
+      const v = inteiroNaoNegativo(corpo.busca?.[campo]);
+      if (v === null) return NextResponse.json({ error: `Campo inválido: busca.${campo}` }, { status: 400 });
+      busca[campo] = v;
+    }
+  }
   if (!sala || duracaoS === null) {
     return NextResponse.json({ error: "Informe sala e duracaoS." }, { status: 400 });
   }
 
-  const custo = custoUsd(tokens, duracaoS);
+  const custoBusca = custoBuscaUsd(busca);
+  const custo = custoUsd(tokens, duracaoS) + custoBusca;
   const agora = new Date();
   const maior = <T,>(coluna: T, valor: number) => sql`greatest(${coluna}, ${valor})`;
 
@@ -56,6 +74,8 @@ export async function POST(req: Request) {
       tokensEntradaImagemCache: maior(sessaoVoz.tokensEntradaImagemCache, tokens.entradaImagemCache),
       tokensSaidaTexto: maior(sessaoVoz.tokensSaidaTexto, tokens.saidaTexto),
       tokensSaidaAudio: maior(sessaoVoz.tokensSaidaAudio, tokens.saidaAudio),
+      buscasWeb: maior(sessaoVoz.buscasWeb, busca.buscas),
+      custoBuscaUsd: maior(sessaoVoz.custoBuscaUsd, custoBusca),
       custoUsd: maior(sessaoVoz.custoUsd, custo),
       atualizadaEm: agora,
       ...(final ? { encerradaEm: agora } : {}),

@@ -84,8 +84,9 @@ export function ehPlanoId(valor: unknown): valor is PlanoId {
 export const USD_POR_CREDITO = 0.01;
 
 /**
- * gpt-realtime-mini, US$ por 1 milhão de tokens. Conferido em 17/11/2026 em
- * https://developers.openai.com/api/docs/pricing — atualize aqui se a OpenAI mudar.
+ * Modelo de voz (gpt-realtime-2.1-mini), US$ por 1 milhão de tokens. Conferido em
+ * 18/11/2026 em https://developers.openai.com/api/docs/pricing — iguais aos do
+ * gpt-realtime-mini, o modelo anterior. Atualize aqui se a OpenAI mudar.
  */
 export const PRECO_USD_POR_MILHAO = {
   entradaTexto: 0.6,
@@ -104,6 +105,34 @@ export const PRECO_USD_POR_MILHAO = {
  * inteira — conservador, já que o usuário não fala o tempo todo.
  */
 export const TRANSCRICAO_USD_POR_MINUTO = 0.003;
+
+/**
+ * Pesquisa na internet (server/agent/busca.py): a ferramenta web_search da OpenAI rodando
+ * no gpt-5.4-mini. Cada busca custa a taxa fixa mais os tokens do modelo de texto (o
+ * conteúdo das páginas lidas entra como tokens de entrada). Conferido em 18/11/2026; se
+ * ASTRA_MODELO_BUSCA mudar no agente, ajuste os preços por token.
+ */
+export const BUSCA_WEB = {
+  usdPorBusca: 0.01, // US$ 10 por 1.000 buscas
+  entradaUsdPorMilhao: 0.75,
+  entradaCacheUsdPorMilhao: 0.075,
+  saidaUsdPorMilhao: 4.5,
+} as const;
+
+/** Consumo das pesquisas de uma sessão, acumulado pelo agente. Entrada inclui o cache. */
+export type UsoBusca = { buscas: number; entrada: number; entradaCache: number; saida: number };
+
+export const CAMPOS_BUSCA: (keyof UsoBusca)[] = ["buscas", "entrada", "entradaCache", "saida"];
+
+export function custoBuscaUsd(b: UsoBusca) {
+  const p = BUSCA_WEB;
+  const semCache = Math.max(0, b.entrada - b.entradaCache);
+  return (
+    b.buscas * p.usdPorBusca +
+    (semCache * p.entradaUsdPorMilhao + b.entradaCache * p.entradaCacheUsdPorMilhao + b.saida * p.saidaUsdPorMilhao) /
+      1_000_000
+  );
+}
 
 /**
  * Custo médio de 1 minuto de conversa, só para mostrar estimativas ("≈ 30 min").

@@ -31,7 +31,8 @@ ESPERA_APOS_FALHA_S = 10.0
 LOTE_MAX = 100
 # Quanto da conversa anterior a Astra recebe ao continuar (~1.500 tokens de texto).
 CONTEXTO_MAX_CHARS = 6000
-MODELO_TITULO = os.getenv("ASTRA_MODELO_TITULO", "gpt-4o-mini")
+# gpt-4o-mini, o modelo anterior, é desligado pela OpenAI em 14/01/2027.
+MODELO_TITULO = os.getenv("ASTRA_MODELO_TITULO", "gpt-5.4-mini")
 
 INSTRUCAO_TITULO = (
     "Você dá títulos a conversas entre um usuário e a assistente de voz Astra. Responda só "
@@ -183,14 +184,14 @@ class Historico:
         try:
             async with AsyncOpenAI() as openai:
                 resposta = await asyncio.wait_for(
-                    openai.chat.completions.create(
+                    openai.responses.create(
                         model=MODELO_TITULO,
-                        messages=[
-                            {"role": "system", "content": INSTRUCAO_TITULO},
-                            {"role": "user", "content": conversa},
-                        ],
-                        max_tokens=24,
-                        temperature=0.3,
+                        instructions=INSTRUCAO_TITULO,
+                        input=conversa,
+                        # Título não precisa de raciocínio. O limite inclui o raciocínio
+                        # que o modelo fizer mesmo assim; o título em si tem ~10 tokens.
+                        reasoning={"effort": "none"},
+                        max_output_tokens=200,
                     ),
                     timeout=15,
                 )
@@ -198,5 +199,5 @@ class Historico:
             # Sem título a conversa aparece com o começo da primeira fala do usuário.
             logger.warning("Não foi possível gerar o título da conversa: %s", e)
             return None
-        titulo = (resposta.choices[0].message.content or "").strip().strip("\"'“”").rstrip(".").strip()
+        titulo = (resposta.output_text or "").strip().strip("\"'“”").rstrip(".").strip()
         return titulo[:80] or None

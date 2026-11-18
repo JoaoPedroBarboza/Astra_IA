@@ -1,16 +1,18 @@
 from dotenv import load_dotenv
 from livekit import agents
-from livekit.agents import AgentSession, Agent, RoomInputOptions, ChatContext
+from livekit.agents import AgentSession, Agent, RoomInputOptions, ChatContext, RunContext, function_tool
 from livekit.agents.voice import VoiceActivityVideoSampler
 from livekit.plugins import noise_cancellation, openai
-# AudioTranscription vem do SDK da OpenAI; o plugin da LiveKit só reexporta
-# RealtimeModel e RealtimeSession.
-from openai.types.realtime import AudioTranscription
+# AudioTranscription e RealtimeReasoning vêm do SDK da OpenAI; o plugin da LiveKit só
+# reexporta RealtimeModel e RealtimeSession.
+from openai.types.realtime import AudioTranscription, RealtimeReasoning
 from prompts import AGENT_INSTRUCTION, SESSION_INSTRUCTION
 from mem0 import AsyncMemoryClient
+from busca import BuscaWeb
 from cliente_app import ClienteApp
 from historico import Historico
 from uso import MedidorDeUso
+from datetime import datetime, timedelta, timezone
 import asyncio
 import logging
 import os
@@ -20,6 +22,26 @@ load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# gpt-realtime-mini (conhecimento até out/2023) é desligado pela OpenAI em 20/01/2027; o
+# substituto indicado é o 2.1-mini (até set/2024), com o mesmo preço por token. A variável
+# permite voltar ao modelo anterior sem mudar código (lk agent update-secrets).
+MODELO_VOZ = os.getenv("ASTRA_MODELO_VOZ", "gpt-realtime-2.1-mini")
+
+# O Brasil não tem horário de verão desde 2019: o deslocamento fixo é exato e não depende
+# do banco de fusos horários do sistema (ausente em imagens Docker enxutas).
+BRASILIA = timezone(timedelta(hours=-3))
+DIAS_DA_SEMANA = ("segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo")
+MESES = (
+    "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+)
+
+
+def data_de_hoje() -> str:
+    """Ex.: "quarta-feira, 18 de novembro de 2026, 14:32". Sem isso o modelo não sabe a data."""
+    agora = datetime.now(BRASILIA)
+    return f"{DIAS_DA_SEMANA[agora.weekday()]}, {agora.day} de {MESES[agora.month - 1]} de {agora.year}, {agora:%H:%M}"
 
 # Instruções para a despedida quando o app manda encerrar (limite do plano).
 MENSAGENS_ENCERRAMENTO = {
@@ -36,17 +58,23 @@ MENSAGENS_ENCERRAMENTO = {
 }
 
 
-def instrucoes_com_contexto(contexto_anterior: str | None) -> str:
-    """Ao continuar uma conversa do histórico, o fim dela entra nas instruções.
+def montar_instrucoes(hoje: str, contexto_anterior: str | None) -> str:
+    """Instruções fixas + data de hoje + (ao continuar uma conversa) o fim dela.
 
-    Nas instruções, e não como mensagens no chat_ctx: a documentação do plugin OpenAI da
-    LiveKit avisa que, com histórico carregado, o Realtime pode passar a responder em texto
-    em vez de voz ("Loading conversation history").
+    O fim da conversa vai nas instruções, e não como mensagens no chat_ctx: a documentação
+    do plugin OpenAI da LiveKit avisa que, com histórico carregado, o Realtime pode passar a
+    responder em texto em vez de voz ("Loading conversation history").
     """
+    instrucoes = (
+        f"{AGENT_INSTRUCTION}\n"
+        "# Data e hora\n"
+        f"Início desta sessão: {hoje}, horário de Brasília. Use isso para falar de datas, dias "
+        "da semana e prazos, e para saber o que é \"hoje\" numa pesquisa.\n"
+    )
     if not contexto_anterior:
-        return AGENT_INSTRUCTION
+        return instrucoes
     return (
-        f"{AGENT_INSTRUCTION}\n\n"
+        f"{instrucoes}\n"
         "# Continuação de conversa\n"
         "Esta sessão continua uma conversa anterior com o usuário. O trecho final dela está "
         "entre as marcações abaixo, da fala mais antiga para a mais recente. Use-o só como "
@@ -57,13 +85,23 @@ def instrucoes_com_contexto(contexto_anterior: str | None) -> str:
 
 
 class Assistant(Agent):
-    def __init__(self, chat_ctx: ChatContext = None, contexto_anterior: str | None = None):
+    def __init__(
+        self,
+        busca: BuscaWeb,
+        hoje: str,
+        chat_ctx: ChatContext = None,
+        contexto_anterior: str | None = None,
+    ):
+        self._busca = busca
         super().__init__(
 
-            instructions=instrucoes_com_contexto(contexto_anterior),
+            instructions=montar_instrucoes(hoje, contexto_anterior),
             llm=openai.realtime.RealtimeModel(
-                model="gpt-realtime-mini",
+                model=MODELO_VOZ,
                 voice="marin",
+                # Os modelos 2.x raciocinam antes de responder. "low" segura a demora e o
+                # custo (o raciocínio é cobrado como saída de texto) numa conversa de voz.
+                reasoning=RealtimeReasoning(effort="low") if "realtime-2" in MODELO_VOZ else None,
                 # O padrão do plugin não define idioma, então a transcrição detecta o
                 # idioma a cada fala e erra em áudio curto ou ruidoso — era daí que
                 # saíam transcrições em chinês/árabe. Fixar evita essa deriva.
@@ -76,6 +114,17 @@ class Assistant(Agent):
             ),
             chat_ctx=chat_ctx,
         )
+
+    @function_tool()
+    async def buscar_na_web(self, context: RunContext, consulta: str) -> str:
+        """Pesquisa na internet informações atuais ou que você não sabe com certeza:
+        notícias, preços, cotações, clima, resultados, eventos, horários e fatos recentes.
+
+        Args:
+            consulta: o que pesquisar, em português, com os detalhes que importam (lugar,
+                data, nomes). Ex.: "previsão do tempo em Curitiba amanhã".
+        """
+        return await self._busca.pesquisar(consulta)
 
 
 async def entrypoint(ctx: agents.JobContext):
@@ -177,7 +226,9 @@ async def entrypoint(ctx: agents.JobContext):
     # inicial como mensagem, mas não é fala da conversa.
     historico.acompanhar(session, ignorar={item.id for item in initial_ctx.items})
 
-    agent = Assistant(chat_ctx=initial_ctx, contexto_anterior=contexto_anterior)
+    hoje = data_de_hoje()
+    busca = BuscaWeb(hoje)
+    agent = Assistant(busca, hoje, chat_ctx=initial_ctx, contexto_anterior=contexto_anterior)
 
     await session.start(
         room=ctx.room,
@@ -189,7 +240,7 @@ async def entrypoint(ctx: agents.JobContext):
     )
 
     # Consumo da sessão: reportado ao app, que aplica os limites do plano do usuário.
-    medidor = MedidorDeUso(session, ctx.room.name, cliente_app)
+    medidor = MedidorDeUso(session, ctx.room.name, cliente_app, busca)
 
     async def encerrar_por_limite(motivo: str) -> None:
         logging.info(f"Encerrando a sessão por limite do plano: {motivo}")
@@ -211,7 +262,7 @@ async def entrypoint(ctx: agents.JobContext):
     # aqui para a conexão HTTP só fechar depois dos dois.
     async def encerrar_com_app() -> None:
         await asyncio.gather(medidor.finalizar(), historico.finalizar(), return_exceptions=True)
-        await cliente_app.fechar()
+        await asyncio.gather(cliente_app.fechar(), busca.fechar(), return_exceptions=True)
 
     ctx.add_shutdown_callback(encerrar_com_app)
 

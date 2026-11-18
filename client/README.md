@@ -76,12 +76,16 @@ LiveKit — veja o README na raiz do repositório.
 
 - `lib/planos.ts` — planos (Órbita · Gratuito, Nova · Pro, Galáxia · Empresarial e Núcleo ·
   Administrador), preços da OpenAI e cálculo de custo. **1 crédito = US$ 0,01** de uso da
-  IA; o limite é por custo real (tokens), não por número de conversas.
+  IA; o limite é por custo real (tokens), não por número de conversas. As pesquisas na
+  internet que a Astra faz também consomem créditos (`BUSCA_WEB`: taxa por busca + tokens
+  do modelo de texto).
 - `lib/planos-servidor.ts` — plano do usuário e consumo do mês (ciclo vira à meia-noite de
   Brasília do dia 1º). Sem linha em `plano_usuario`, vale o Órbita.
 - `app/api/token` recusa a sessão se o saldo acabou e registra a sala em `sessao_voz`.
-- `app/api/uso` recebe do agente os tokens acumulados de cada sala (autenticado por
-  `ASTRA_AGENT_SECRET`) e responde se a sessão deve ser encerrada (créditos ou duração).
+- `app/api/uso` recebe do agente os tokens acumulados de cada sala e o consumo das
+  pesquisas (autenticado por `ASTRA_AGENT_SECRET`) e responde se a sessão deve ser
+  encerrada (créditos ou duração). `sessao_voz.custo_usd` é o total; `buscas_web` e
+  `custo_busca_usd` mostram a parte das pesquisas.
 - `app/api/admin/usuarios` — painel de administração (só plano Núcleo): consumo por usuário
   e troca de plano. Enquanto não há pagamento online, upgrade é feito por aqui.
 - Administradores vêm de `ADMIN_EMAILS` no ambiente, não do banco.
